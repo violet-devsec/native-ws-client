@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local WebSocket Client</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      max-width: 900px;
+    }
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    input, button, textarea {
+      font: inherit;
+    }
+    input[type="text"] {
+      flex: 1;
+      min-width: 260px;
+      padding: 10px;
+    }
+    textarea {
+      width: 100%;
+      height: 180px;
+      padding: 10px;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    button {
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+    .status {
+      padding: 8px 10px;
+      background: #f4f4f4;
+      border: 1px solid #ddd;
+      margin-bottom: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Local WebSocket Client</h1>
+
+  <div class="status" id="status">Disconnected</div>
+
+  <div class="row">
+    <input id="wsUrl" type="text" value="ws://127.0.0.1:17788" />
+    <button id="connectBtn">Connect</button>
+    <button id="disconnectBtn" disabled>Disconnect</button>
+  </div>
+
+  <div class="row">
+    <input id="messageInput" type="text" placeholder="Type a message to send" />
+    <button id="sendBtn" disabled>Send</button>
+  </div>
+
+  <textarea id="log" readonly placeholder="Connection log..."></textarea>
+
+  <script>
+    let socket = null;
+
+    const wsUrl = document.getElementById("wsUrl");
+    const statusEl = document.getElementById("status");
+    const logEl = document.getElementById("log");
+    const messageInput = document.getElementById("messageInput");
+    const connectBtn = document.getElementById("connectBtn");
+    const disconnectBtn = document.getElementById("disconnectBtn");
+    const sendBtn = document.getElementById("sendBtn");
+
+    function log(message) {
+      const line = `[${new Date().toLocaleTimeString()}] ${message}`;
+      console.log(line);
+      logEl.value += line + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function setConnectedState(connected) {
+      connectBtn.disabled = connected;
+      disconnectBtn.disabled = !connected;
+      sendBtn.disabled = !connected;
+    }
+
+    function connect() {
+      const url = wsUrl.value.trim();
+
+      if (!url) {
+        log("WebSocket URL is empty.");
+        return;
+      }
+
+      try {
+        socket = new WebSocket(url);
+      } catch (err) {
+        log("Failed to create WebSocket: " + err.message);
+        return;
+      }
+
+      setStatus("Connecting...");
+      log("Connecting to " + url);
+
+      socket.onopen = () => {
+        setStatus("Connected");
+        setConnectedState(true);
+        log("Connected");
+      };
+
+      socket.onmessage = (event) => {
+        log("Received: " + event.data);
+      };
+
+      socket.onerror = (event) => {
+        log("WebSocket error occurred");
+        console.error("WebSocket error:", event);
+      };
+
+      socket.onclose = (event) => {
+        setStatus(`Disconnected (code ${event.code})`);
+        setConnectedState(false);
+        log(`Disconnected (code ${event.code}, reason: ${event.reason || "none"})`);
+        socket = null;
+      };
+    }
+
+    function disconnect() {
+      if (socket) {
+        log("Closing connection...");
+        socket.close();
+      }
+    }
+
+    function sendMessage() {
+      const message = messageInput.value;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        log("Cannot send: socket is not open.");
+        return;
+      }
+
+      socket.send(message);
+      log("Sent: " + message);
+      messageInput.value = "";
+      messageInput.focus();
+    }
+
+    connectBtn.addEventListener("click", connect);
+    disconnectBtn.addEventListener("click", disconnect);
+    sendBtn.addEventListener("click", sendMessage);
+
+    messageInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        sendMessage();
+      }
+    });
+
+    // Optional: auto-connect on page load
+    // connect();
+  </script>
+</body>
+</html>
