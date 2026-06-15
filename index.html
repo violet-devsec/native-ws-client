@@ -115,11 +115,12 @@
 
       socket.onmessage = async (event) => {
         if (event.data instanceof Blob) {
-          const text = await event.data.text();
-          log("Received: " + text);
-        }  else {
-          log("Received: " + event.data);
-        }     
+          const buffer = await event.data.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+      
+          log("Received bytes:", bytes);
+          log(`Received ${bytes.length} bytes`);
+        }   
       };
 
       socket.onerror = (event) => {
