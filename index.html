@@ -113,7 +113,7 @@
         log("Connected");
       };
 
-      socket.onmessage = (event) => {
+      socket.onmessage = async (event) => {
         if (event.data instanceof Blob) {
           const text = await event.data.text();
           log("Received: " + text);
