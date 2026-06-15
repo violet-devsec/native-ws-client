@@ -117,7 +117,7 @@
       socket.onmessage = (event) => {
         if (event.data instanceof ArrayBuffer) {
             const bytes = new Uint8Array(event.data);
-            log("Received bytes:", bytes);
+            console.log("Received bytes:", bytes);
           } else {
             log("Received:", event.data);
           }
