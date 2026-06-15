@@ -114,7 +114,12 @@
       };
 
       socket.onmessage = (event) => {
-        log("Received: " + event.data);
+        if (event.data instanceof Blob) {
+          const text = await event.data.text();
+          log("Received: " + text);
+        }  else {
+          log("Received: " + event.data);
+        }     
       };
 
       socket.onerror = (event) => {
