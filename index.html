@@ -115,13 +115,12 @@
       };
 
       socket.onmessage = (event) => {
-        if (event.data instanceof Blob) {
-          const buffer = await event.data.arrayBuffer();
-          const bytes = new Uint8Array(buffer);
-      
-          console.log("Received bytes:", bytes);
-          log(`Received ${bytes.length} bytes`);
-        } 
+        if (event.data instanceof ArrayBuffer) {
+            const bytes = new Uint8Array(event.data);
+            console.log("Received bytes:", bytes);
+          } else {
+            console.log("Received:", event.data);
+          }
       };
 
       socket.onerror = (event) => {
