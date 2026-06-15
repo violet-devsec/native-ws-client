@@ -99,6 +99,7 @@
 
       try {
         socket = new WebSocket(url);
+        socket.binaryType = "arraybuffer";
       } catch (err) {
         log("Failed to create WebSocket: " + err.message);
         return;
