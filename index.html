@@ -3,12 +3,56 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Local WebSocket Client</title>
+  <title>WebSocket Protocol Client</title>
   <style>
     body {
       font-family: Arial, sans-serif;
       margin: 24px;
-      max-width: 900px;
+      max-width: 1100px;
+      line-height: 1.45;
+    }
+    h1 {
+      margin: 0 0 12px;
+    }
+    .hint {
+      color: #555;
+      margin: 0 0 16px;
+    }
+    .status {
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      background: #f6f6f6;
+      margin-bottom: 12px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    label {
+      font-size: 0.92rem;
+      color: #333;
+    }
+    input, button, textarea {
+      font: inherit;
+    }
+    input[type="text"] {
+      padding: 10px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    textarea {
+      width: 100%;
+      height: 260px;
+      padding: 10px;
+      box-sizing: border-box;
+      resize: vertical;
     }
     .row {
       display: flex;
@@ -16,86 +60,213 @@
       flex-wrap: wrap;
       margin-bottom: 12px;
     }
-    input, button, textarea {
-      font: inherit;
-    }
-    input[type="text"] {
-      flex: 1;
-      min-width: 260px;
-      padding: 10px;
-    }
-    textarea {
-      width: 100%;
-      height: 180px;
-      padding: 10px;
-      box-sizing: border-box;
-      resize: vertical;
-    }
     button {
       padding: 10px 14px;
       cursor: pointer;
     }
-    .status {
-      padding: 8px 10px;
-      background: #f4f4f4;
-      border: 1px solid #ddd;
-      margin-bottom: 12px;
+    .small {
+      font-size: 0.9rem;
+      color: #666;
+    }
+    @media (max-width: 800px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>Local WebSocket Client</h1>
+  <h1>WebSocket Protocol Client</h1>
+  <p class="hint">
+    Connects to a local WebSocket server, sends <code>auth</code> first, then waits for server <code>sign</code> and <code>ok</code>,
+    while logging keepalive packets and all frames to the console.
+  </p>
 
   <div class="status" id="status">Disconnected</div>
 
+  <div class="grid">
+    <div class="field">
+      <label for="wsUrl">WebSocket URL</label>
+      <input id="wsUrl" type="text" value="ws://localhost:12345" />
+    </div>
+    <div class="field">
+      <label for="commit">Commit</label>
+      <input id="commit" type="text" value="d2e2138fe4eecab29cb2cd7e02ddae37bed2d5fb" />
+    </div>
+    <div class="field">
+      <label for="auth">Auth</label>
+      <input id="auth" type="text" value="bae74af75a49d75fc1c5cfa4e" />
+    </div>
+    <div class="field">
+      <label for="data">Data</label>
+      <input id="data" type="text" value="16c474b0-7b2c-4a87-9d97-9b130d459cfc" />
+    </div>
+    <div class="field">
+      <label for="remoteAuthority">Remote Authority</label>
+      <input id="remoteAuthority" type="text" value="wsl+ubuntu-26.04" />
+    </div>
+    <div class="field">
+      <label for="clientId">Client ID</label>
+      <input id="clientId" type="text" value="renderer" />
+    </div>
+    <div class="field">
+      <label for="connectionId">Connection ID</label>
+      <input id="connectionId" type="text" value="112a5c9b-dcfa-403c-9baa-f998fa009451" />
+    </div>
+  </div>
+
   <div class="row">
-    <input id="wsUrl" type="text" value="ws://127.0.0.1:17788" />
     <button id="connectBtn">Connect</button>
     <button id="disconnectBtn" disabled>Disconnect</button>
+    <button id="clearBtn">Clear Log</button>
   </div>
 
-  <div class="row">
-    <input id="messageInput" type="text" placeholder="Type a message to send" />
-    <button id="sendBtn" disabled>Send</button>
+  <div class="small">
+    Keepalive frame recognized as: <code>09 00 00 00 00 00 00 00 00 00 00 00 00 00</code>
   </div>
 
-  <textarea id="log" readonly placeholder="Connection log..."></textarea>
+  <textarea id="log" readonly></textarea>
 
   <script>
     let socket = null;
 
-    const wsUrl = document.getElementById("wsUrl");
-    const statusEl = document.getElementById("status");
-    const logEl = document.getElementById("log");
-    const messageInput = document.getElementById("messageInput");
-    const connectBtn = document.getElementById("connectBtn");
-    const disconnectBtn = document.getElementById("disconnectBtn");
-    const sendBtn = document.getElementById("sendBtn");
+    const state = {
+      step: 0 // 0 = waiting after auth; 1 = waiting for sign; 2 = waiting for ok; 3 = done
+    };
+
+    const els = {
+      wsUrl: document.getElementById("wsUrl"),
+      auth: document.getElementById("auth"),
+      data: document.getElementById("data"),
+      commit: document.getElementById("commit"),
+      remoteAuthority: document.getElementById("remoteAuthority"),
+      clientId: document.getElementById("clientId"),
+      connectionId: document.getElementById("connectionId"),
+      status: document.getElementById("status"),
+      log: document.getElementById("log"),
+      connectBtn: document.getElementById("connectBtn"),
+      disconnectBtn: document.getElementById("disconnectBtn"),
+      clearBtn: document.getElementById("clearBtn")
+    };
 
     function log(message) {
       const line = `[${new Date().toLocaleTimeString()}] ${message}`;
       console.log(line);
-      logEl.value += line + "\n";
-      logEl.scrollTop = logEl.scrollHeight;
+      els.log.value += line + "\n";
+      els.log.scrollTop = els.log.scrollHeight;
     }
 
     function setStatus(text) {
-      statusEl.textContent = text;
+      els.status.textContent = text;
     }
 
-    function setConnectedState(connected) {
-      connectBtn.disabled = connected;
-      disconnectBtn.disabled = !connected;
-      sendBtn.disabled = !connected;
+    function setConnected(connected) {
+      els.connectBtn.disabled = connected;
+      els.disconnectBtn.disabled = !connected;
+    }
+
+    function bytesToHex(bytes) {
+      return Array.from(bytes)
+        .map(b => b.toString(16).padStart(2, "0"))
+        .join(" ");
+    }
+
+    function isKeepAlive(bytes) {
+      if (bytes.length !== 14) return false;
+      if (bytes[0] !== 0x09) return false;
+      for (let i = 1; i < bytes.length; i++) {
+        if (bytes[i] !== 0x00) return false;
+      }
+      return true;
+    }
+
+    function sendJson(obj) {
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        log("Cannot send JSON: socket is not open.");
+        return;
+      }
+      const text = JSON.stringify(obj);
+      socket.send(text);
+      log("Sent: " + text);
+    }
+
+    function handleServerJson(msg) {
+      log("Received JSON: " + JSON.stringify(msg));
+
+      if (state.step === 1 && msg.type === "sign") {
+        log("Server sign received; replying with connectionType.");
+
+        sendJson({
+          type: "connectionType",
+          commit: els.commit.value.trim(),
+          signedData: msg.data,
+          desiredConnectionType: 1
+        });
+
+        state.step = 2;
+        return;
+      }
+
+      if (state.step === 2 && msg.type === "ok") {
+        log("Server ok received; sending final session info.");
+
+        sendJson({
+          remoteAuthority: els.remoteAuthority.value.trim(),
+          clientId: els.clientId.value.trim(),
+          connectionId: els.connectionId.value.trim()
+        });
+
+        state.step = 3;
+        return;
+      }
+
+      log("Unhandled JSON message type: " + (msg.type ?? "(none)"));
+    }
+
+    async function handleIncoming(event) {
+      if (event.data instanceof ArrayBuffer) {
+        const bytes = new Uint8Array(event.data);
+        const hex = bytesToHex(bytes);
+        log("Received binary: " + hex);
+
+        if (isKeepAlive(bytes)) {
+          log("Received keepalive packet from server.");
+        }
+        return;
+      }
+
+      if (event.data instanceof Blob) {
+        const text = await event.data.text();
+        log("Received Blob: " + text);
+        try {
+          handleServerJson(JSON.parse(text));
+        } catch {
+          // not JSON
+        }
+        return;
+      }
+
+      if (typeof event.data === "string") {
+        log("Received text: " + event.data);
+        try {
+          handleServerJson(JSON.parse(event.data));
+        } catch {
+          // not JSON
+        }
+        return;
+      }
+
+      log("Received unknown message type.");
     }
 
     function connect() {
-      const url = wsUrl.value.trim();
-
+      const url = els.wsUrl.value.trim();
       if (!url) {
         log("WebSocket URL is empty.");
         return;
       }
+
+      state.step = 0;
 
       try {
         socket = new WebSocket(url);
@@ -110,27 +281,29 @@
 
       socket.onopen = () => {
         setStatus("Connected");
-        setConnectedState(true);
+        setConnected(true);
         log("Connected");
+
+        // Send auth first, immediately after connection opens.
+        sendJson({
+          type: "auth",
+          auth: els.auth.value.trim(),
+          data: els.data.value.trim()
+        });
+
+        state.step = 1;
       };
 
-      socket.onmessage = (event) => {
-        if (event.data instanceof ArrayBuffer) {
-            const bytes = new Uint8Array(event.data);
-            console.log("Received bytes:", bytes);
-          } else {
-            log("Received:", event.data);
-          }
-      };
+      socket.onmessage = handleIncoming;
 
       socket.onerror = (event) => {
-        log("WebSocket error occurred");
+        log("WebSocket error occurred.");
         console.error("WebSocket error:", event);
       };
 
       socket.onclose = (event) => {
         setStatus(`Disconnected (code ${event.code})`);
-        setConnectedState(false);
+        setConnected(false);
         log(`Disconnected (code ${event.code}, reason: ${event.reason || "none"})`);
         socket = null;
       };
@@ -143,31 +316,13 @@
       }
     }
 
-    function sendMessage() {
-      const message = messageInput.value;
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        log("Cannot send: socket is not open.");
-        return;
-      }
-
-      socket.send(message);
-      log("Sent: " + message);
-      messageInput.value = "";
-      messageInput.focus();
-    }
-
-    connectBtn.addEventListener("click", connect);
-    disconnectBtn.addEventListener("click", disconnect);
-    sendBtn.addEventListener("click", sendMessage);
-
-    messageInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        sendMessage();
-      }
+    els.connectBtn.addEventListener("click", connect);
+    els.disconnectBtn.addEventListener("click", disconnect);
+    els.clearBtn.addEventListener("click", () => {
+      els.log.value = "";
+      console.clear();
+      log("Log cleared.");
     });
-
-    // Optional: auto-connect on page load
-    // connect();
   </script>
 </body>
 </html>
