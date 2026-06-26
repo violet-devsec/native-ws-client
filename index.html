@@ -177,12 +177,12 @@
             const auth = "040000000000000000000000000200000000000000000000002D7B2274797065223A2261757468222C2261757468223A223030303030303030303030303030303030303030227D";
             const authBytes = hexStringToArrayBuffer(auth);
             if(els.auth.value.trim() != '') {
-                authBytes = hexStringToArrayBuffer(els.auth.value.trim());
-            } 
-            const data = els.data.value.trim();
-            let packetData = `{"type":"auth","auth":"${authBytes}","data":"${data}"}`;
-            let authPacket = createPacket(0x02, 0x00, 0x00, packetData);
-            showMessage(`Sending auth request: ${authPacket}`);
+              const authValue = els.auth.value.trim();
+              const data = els.data.value.trim();
+              let packetData = `{"type":"auth","auth":"${authValue}","data":"${data}"}`;
+              authBytes = createPacket(0x02, 0x00, 0x00, packetData);
+            }
+            showMessage(`Sending auth request: ${authBytes}`);
             sendMessage(socket, authPacket);
         };
 
