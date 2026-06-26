@@ -128,13 +128,6 @@
   <textarea id="log" readonly></textarea>
 
   <script>
-    els.connectBtn.addEventListener("click", getFormData);
-    els.disconnectBtn.addEventListener("click", disconnect);
-    els.clearBtn.addEventListener("click", () => {
-      els.log.value = "";
-      console.clear();
-      log("Log cleared.");
-    });
 
     const els = {
       wsUrl: document.getElementById("wsUrl"),
@@ -150,6 +143,14 @@
       disconnectBtn: document.getElementById("disconnectBtn"),
       clearBtn: document.getElementById("clearBtn")
     };
+
+    els.connectBtn.addEventListener("click", getFormData);
+    els.disconnectBtn.addEventListener("click", disconnect);
+    els.clearBtn.addEventListener("click", () => {
+      els.log.value = "";
+      console.clear();
+      log("Log cleared.");
+    });
 
     function getFormData() {
         var p = document.getElementById('port').value;
@@ -294,9 +295,10 @@
     }
 
     function showMessage(message) {
-        let messageElem = document.createElement('div');
-        messageElem.textContent = message;
-        document.getElementById('messages').appendChild(messageElem);
+        const line = `[${new Date().toLocaleTimeString()}] ${message}`;
+      console.log(line);
+      els.log.value += line + "\n";
+      els.log.scrollTop = els.log.scrollHeight;
     }
 
     function doSigning(data) {
