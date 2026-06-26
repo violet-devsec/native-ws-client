@@ -174,15 +174,39 @@
             // auth packet
             const auth = "040000000000000000000000000200000000000000000000002D7B2274797065223A2261757468222C2261757468223A223030303030303030303030303030303030303030227D";
             const authBytes = hexStringToArrayBuffer(auth);
-            //if(els.auth != '') {
-                alert(els.auth);
-                //authBytes = hexStringToArrayBuffer(els.auth);
-            //}
-            const data = els.data;
+            if(els.auth.value.trim() != '') {
+                authBytes = hexStringToArrayBuffer(els.auth.value.trim());
+            } 
+            const data = els.data.value.trim();
             let packetData = `{"type":"auth","auth":"${authBytes}","data":"${data}"}`;
-            showMessage(`Sending auth request: ${authBytes}`);
-            sendMessage(socket, authBytes);
+            let authPacket = createPacket(0x02, 0x00, 0x00, packetData);
+            showMessage(`Sending auth request: ${authPacket}`);
+            sendMessage(socket, authPacket);
         };
+
+    function createPacket(packetType, packetID, ackID, packetData) {
+        // Fill the packet with 0x00.
+        let buf = buffer.Buffer.alloc(1 + 12 + packetData.length).fill(0x00);
+
+        // Set packet type. This should be a number between 1-6 (inclusive).
+        buf[0] = packetType;
+
+        // Write the packetID as big endian starting from offset 1.
+        buf.writeUIntBE(packetID, 1, 4);
+
+        // Write the ackID as big endian starting from offset 5.
+        buf.writeUIntBE(ackID, 5, 4);
+
+        // Write packetData's length as big endian starting from offset 9.
+        buf.writeUIntBE(packetData.length, 9, 4);
+
+        // Write the packet starting from offset 13.
+        let bytesWritten = buf.write(packetData, 13);
+        // console.log(`bytesWritte: ${bytesWritten}`);
+
+        // console.log(buf.toString('hex'));
+        return buf;
+    }
 
         // Display incoming websocket messages.
         socket.onmessage = async function(event) {
@@ -306,9 +330,9 @@
 
     function showMessage(message) {
         const line = `[${new Date().toLocaleTimeString()}] ${message}`;
-      console.log(line);
-      els.log.value += line + "\n";
-      els.log.scrollTop = els.log.scrollHeight;
+        console.log(line);
+        els.log.value += line + "\n";
+        els.log.scrollTop = els.log.scrollHeight;
     }
 
     function doSigning(data) {
