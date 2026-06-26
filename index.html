@@ -86,8 +86,8 @@
 
   <div class="grid">
     <div class="field">
-      <label for="wsUrl">WebSocket URL</label>
-      <input id="wsUrl" type="text" value="ws://localhost:12345" />
+      <label for="port">WebSocket Port</label>
+      <input id="port" type="text" value="" />
     </div>
     <div class="field">
       <label for="commit">Commit</label>
@@ -128,12 +128,6 @@
   <textarea id="log" readonly></textarea>
 
   <script>
-    let socket = null;
-
-    const state = {
-      step: 0 // 0 = waiting after auth; 1 = waiting for sign; 2 = waiting for ok; 3 = done
-    };
-
     const els = {
       wsUrl: document.getElementById("wsUrl"),
       auth: document.getElementById("auth"),
@@ -149,181 +143,166 @@
       clearBtn: document.getElementById("clearBtn")
     };
 
-    function log(message) {
-      const line = `[${new Date().toLocaleTimeString()}] ${message}`;
-      console.log(line);
-      els.log.value += line + "\n";
-      els.log.scrollTop = els.log.scrollHeight;
+    function getFormData() {
+        var p = document.getElementById('port').value;
+        const s = connectWS(p);
+        console.log(JSON.stringify(s));
     }
 
-    function setStatus(text) {
-      els.status.textContent = text;
-    }
-
-    function setConnected(connected) {
-      els.connectBtn.disabled = connected;
-      els.disconnectBtn.disabled = !connected;
-    }
-
-    function bytesToHex(bytes) {
-      return Array.from(bytes)
-        .map(b => b.toString(16).padStart(2, "0"))
-        .join(" ");
-    }
-
-    function isKeepAlive(bytes) {
-      if (bytes.length !== 14) return false;
-      if (bytes[0] !== 0x09) return false;
-      for (let i = 1; i < bytes.length; i++) {
-        if (bytes[i] !== 0x00) return false;
-      }
-      return true;
-    }
-
-    function sendJson(obj) {
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        log("Cannot send JSON: socket is not open.");
-        return;
-      }
-      const text = JSON.stringify(obj);
-      socket.send(text);
-      log("Sent: " + text);
-    }
-
-    function handleServerJson(msg) {
-      log("Received JSON: " + JSON.stringify(msg));
-
-      if (state.step === 1 && msg.type === "sign") {
-        log("Server sign received; replying with connectionType.");
-
-        sendJson({
-          type: "connectionType",
-          commit: els.commit.value.trim(),
-          signedData: msg.data,
-          desiredConnectionType: 1
-        });
-
-        state.step = 2;
-        return;
-      }
-
-      if (state.step === 2 && msg.type === "ok") {
-        log("Server ok received; sending final session info.");
-
-        sendJson({
-          remoteAuthority: els.remoteAuthority.value.trim(),
-          clientId: els.clientId.value.trim(),
-          connectionId: els.connectionId.value.trim()
-        });
-
-        state.step = 3;
-        return;
-      }
-
-      log("Unhandled JSON message type: " + (msg.type ?? "(none)"));
-    }
-
-    async function handleIncoming(event) {
-      log("Raw message from server:", event.data);
-      if (event.data instanceof ArrayBuffer) {
-        const bytes = new Uint8Array(event.data);
-        const hex = bytesToHex(bytes);
-        log("Received binary: " + hex);
-
-        if (isKeepAlive(bytes)) {
-          log("Received keepalive packet from server.");
-        }
-        return;
-      }
-
-      if (event.data instanceof Blob) {
-        const text = await event.data.text();
-        log("Received Blob: " + text);
-        try {
-          handleServerJson(JSON.parse(text));
-        } catch {
-          // not JSON
-        }
-        return;
-      }
-
-      if (typeof event.data === "string") {
-        log("Received text: " + event.data);
-        try {
-          handleServerJson(JSON.parse(event.data));
-        } catch {
-          // not JSON
-        }
-        return;
-      }
-
-      log("Received unknown message type.");
-    }
-
-    function connect() {
-      const url = els.wsUrl.value.trim();
-      if (!url) {
-        log("WebSocket URL is empty.");
-        return;
-      }
-
-      state.step = 0;
-
-      try {
+    function connectWS(port) {
+        let url = `ws://localhost:${port}`;
+        
+        // Open the socket.
+        var socket;
         socket = new WebSocket(url);
         socket.binaryType = "arraybuffer";
-      } catch (err) {
-        log("Failed to create WebSocket: " + err.message);
-        return;
-      }
 
-      setStatus("Connecting...");
-      log("Connecting to " + url);
+        // ----- Start of Socket Events -----
 
-      socket.onopen = () => {
-        setStatus("Connected");
-        setConnected(true);
-        log("Connected");
+        // This is executed when the websocket is opened.
+        socket.onopen = function(event) {
+            // Send auth when the websocket is opened.
+            // auth packet
+            const auth = "040000000000000000000000000200000000000000000000002D7B2274797065223A2261757468222C2261757468223A223030303030303030303030303030303030303030227D";
+            const authBytes = hexStringToArrayBuffer(auth);
+            const data = els.data;
+            let packetData = `{"type":"auth","auth":"${authBytes}","data":"${data}"}`;
+            sendMessage(socket, authBytes);
+        };
 
-        // Send auth first, immediately after connection opens.
-        sendJson({
-          type: "auth",
-          auth: els.auth.value.trim(),
-          data: els.data.value.trim()
+        // Display incoming websocket messages.
+        socket.onmessage = async function(event) {
+            let incomingMessage = event.data;
+            
+            // Print what we got.
+            let packet = parsePacket(incomingMessage);
+            showMessage(`${packet.type}: ${packet.data}`);
+            // showMessage(`Received: ${packet.type}`);
+
+            // Check if the message contains `"sign"`.
+            if (packet.data.includes('"sign"')) {
+                // Parse the data as json and extract sign.
+                const parsed = JSON.parse(packet.data);
+                showMessage(`Got a signing request: ${parsed.data}`);
+                //showMessage('Got a signing request');
+                showMessage('Sending a request to /sign');
+
+                // Now we need to make a request to /sign.
+                const signed = doSigning(packet.data); //await (await postJSON('/sign', packet.data)).arrayBuffer();
+
+                let sg = parsePacket(signed);
+                showMessage(`${sg.data}`);
+
+                // Send it as-is to the local WebSocket server.
+                sendMessage(socket, signed);
+            }
+
+            // {"debugPort":55000}
+            // Check if the message contains 'debugPort'.
+            if (packet.data.includes('debugPort')) {
+            // This means we can parse packet.data as JSON.
+            const parsed = JSON.parse(packet.data);
+
+            showMessage(`Check the local Node Inspector instance running on port ${parsed.debugPort}`);
+
+            // debugPort has the port we need to send to /inspect.
+            // showMessage(`debugPort: ${parsed.debugPort}`);
+            // showMessage('Sending a request to /inspect');
+            // POST `packet.data` to /inspect.
+            // ZZZ
+            // const res = await (await postJSON('/inspect', packet.data)).arrayBuffer();
+            // showMessage(bufferToString(res));
+            }
+
+        };
+
+        // Log in console when the socket is closed.
+        socket.onclose = event => console.log(`Closed ${event.code}`);
+        // ----- End of Socket Events -----
+
+        return socket;
+    }
+
+    function sendMessage(socket, message) {
+        socket.send(message);
+    }
+
+    function hexStringToArrayBuffer(hexString) {
+    
+        // ensure even number of characters
+        if (hexString.length % 2 != 0) {
+            console.log('WARNING: expecting an even number of characters in the hexString');
+        }
+        
+        // check for some non-hex characters
+        var bad = hexString.match(/[G-Z\s]/i);
+        if (bad) {
+            console.log('WARNING: found non-hex characters', bad);
+        }
+        
+        // split the string into pairs of octets
+        var pairs = hexString.match(/[\dA-F]{2}/gi);
+        
+        // convert the octets to integers
+        var integers = pairs.map(function(s) {
+            return parseInt(s, 16);
         });
-
-        state.step = 1;
-      };
-
-      socket.onmessage = handleIncoming;
-
-      socket.onerror = (event) => {
-        log("WebSocket error occurred.");
-        console.error("WebSocket error:", event);
-      };
-
-      socket.onclose = (event) => {
-        setStatus(`Disconnected (code ${event.code})`);
-        setConnected(false);
-        log(`Disconnected (code ${event.code}, reason: ${event.reason || "none"})`);
-        socket = null;
-      };
+        
+        var array = new Uint8Array(integers);
+        
+        return array.buffer;
     }
 
-    function disconnect() {
-      if (socket) {
-        log("Closing connection...");
-        socket.close();
-      }
+    function parsePacket(packet) {
+        // Reference: https://stackoverflow.com/a/47564755
+        // We're gonna get ArrayBuffers from the websocket.
+        // Create a view.
+        var view = new DataView(packet);
+
+        // The first byte is the type.
+        var typeByte = view.getInt8(0);
+        var type = '';
+        // Create the type of the packet.
+        switch (typeByte) {
+            case 0x04:
+            type = 'OK Message';
+            break;
+            // case 0x02:
+            //   type = ''
+                
+            default:
+            // Otherwise use the hex string.
+            type = typeByte.toString(16);
+            break;
+        }
+
+        // Next 12 bytes are length of the rest of the packet that we can skip.
+
+        // Everything after is value.
+        return {
+            type: type,
+            data: bufferToString(packet.slice(13, packet.byteLength))
+        };
     }
 
-    els.connectBtn.addEventListener("click", connect);
-    els.disconnectBtn.addEventListener("click", disconnect);
-    els.clearBtn.addEventListener("click", () => {
-      els.log.value = "";
-      console.clear();
-      log("Log cleared.");
-    });
+    function showMessage(message) {
+        let messageElem = document.createElement('div');
+        messageElem.textContent = message;
+        document.getElementById('messages').appendChild(messageElem);
+    }
+
+    function doSigning(data) {
+        // Sign whatever came in the POST request.
+        // req.body is already parsed because we have the content-type.
+        var signed = ''; //signer.sign(String(data));
+
+        // Packet data.
+        let packetData = `{"type":"connectionType","commit":"${els.commit}","signedData":"${signed}","desiredConnectionType":2,"args":{"language":"en","break":false,"port":55000}}`;
+        console.log(packetData);
+
+        buf = createPacket(0x02, 0x00, 0x00, packetData);
+        return buf;
+    }
   </script>
 </body>
 </html>
