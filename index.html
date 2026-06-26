@@ -180,8 +180,8 @@
             //}
             const data = els.data;
             let packetData = `{"type":"auth","auth":"${authBytes}","data":"${data}"}`;
-            showMessage(`Sending auth request: ${packetData}`);
-            sendMessage(socket, packetData);
+            showMessage(`Sending auth request: ${authBytes}`);
+            sendMessage(socket, authBytes);
         };
 
         // Display incoming websocket messages.
