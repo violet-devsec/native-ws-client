@@ -294,6 +294,11 @@
         };
     }
 
+    function bufferToString(buf) {
+        var dec = new TextDecoder("utf-8");
+        return dec.decode(buf);
+    }
+
     function showMessage(message) {
         const line = `[${new Date().toLocaleTimeString()}] ${message}`;
       console.log(line);
