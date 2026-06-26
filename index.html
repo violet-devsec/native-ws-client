@@ -174,9 +174,13 @@
             // auth packet
             const auth = "040000000000000000000000000200000000000000000000002D7B2274797065223A2261757468222C2261757468223A223030303030303030303030303030303030303030227D";
             const authBytes = hexStringToArrayBuffer(auth);
+            if(els.auth != '') {
+                authBytes = hexStringToArrayBuffer(els.auth);
+            }ß   
             const data = els.data;
             let packetData = `{"type":"auth","auth":"${authBytes}","data":"${data}"}`;
-            sendMessage(socket, authBytes);
+            showMessage(`Sending auth request: ${packetData}`);
+            sendMessage(socket, packetData);
         };
 
         // Display incoming websocket messages.
