@@ -129,6 +129,8 @@
 
   <script>
 
+    import { Buffer } from 'https://esm.sh/buffer';
+
     const els = {
       wsUrl: document.getElementById("wsUrl"),
       auth: document.getElementById("auth"),
@@ -185,26 +187,12 @@
         };
 
     function createPacket(packetType, packetID, ackID, packetData) {
-        // Fill the packet with 0x00.
-        let buf = buffer.Buffer.alloc(1 + 12 + packetData.length).fill(0x00);
-
-        // Set packet type. This should be a number between 1-6 (inclusive).
+        const buf = Buffer.alloc(13 + packetData.length).fill(0);
         buf[0] = packetType;
-
-        // Write the packetID as big endian starting from offset 1.
         buf.writeUIntBE(packetID, 1, 4);
-
-        // Write the ackID as big endian starting from offset 5.
         buf.writeUIntBE(ackID, 5, 4);
-
-        // Write packetData's length as big endian starting from offset 9.
         buf.writeUIntBE(packetData.length, 9, 4);
-
-        // Write the packet starting from offset 13.
-        let bytesWritten = buf.write(packetData, 13);
-        // console.log(`bytesWritte: ${bytesWritten}`);
-
-        // console.log(buf.toString('hex'));
+        buf.write(packetData, 13);
         return buf;
     }
 
